@@ -1,0 +1,648 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>BFDI Ultimate Competition</title>
+<style>
+body {
+ background:#17243b;
+ color:white;
+ font-family:Arial;
+ text-align:center;
+ margin:0;
+ padding:15px;
+}
+h1 {color:#ffe34d;font-size:36px}
+.panel {
+ background:#263b59;
+ padding:20px;
+ margin:15px auto;
+ border-radius:15px;
+ max-width:1000px;
+}
+button {
+ background:#ffe34d;
+ color:#222;
+ border:0;
+ padding:12px;
+ margin:5px;
+ border-radius:9px;
+ cursor:pointer;
+ font-weight:bold;
+}
+button:hover {background:orange}
+.grid {
+ display:grid;
+ grid-template-columns:repeat(auto-fit,minmax(115px,1fr));
+ gap:9px;
+}
+.character {
+ background:#405878;
+ color:white;
+ min-height:90px;
+}
+.character.selected {outline:4px solid yellow}
+.face {font-size:30px}
+.hidden {display:none!important}
+.team {
+ padding:15px;
+ margin:10px;
+ border-radius:12px;
+ background:#344d6e;
+}
+.contestant {
+ display:inline-block;
+ background:#405878;
+ padding:9px;
+ margin:5px;
+ border-radius:9px;
+ min-width:85px;
+}
+.vote {
+ display:block;
+ background:#405878;
+ padding:12px;
+ margin:7px;
+ border-radius:8px;
+}
+.safe {color:#75ff9c}
+.danger {color:#ff7777}
+#log {text-align:left}
+</style>
+</head>
+<body>
+
+<h1>BFDI ULTIMATE COMPETITION</h1>
+<p>20 contestants. 2 teams. One winner.</p>
+
+<div class="panel" id="selection">
+<h2>CHOOSE YOUR CHARACTER</h2>
+<div class="grid" id="characters"></div>
+<h3 id="selected">Choose your character!</h3>
+<button onclick="startGame()">START THE SEASON</button>
+</div>
+
+<div class="panel hidden" id="game">
+<h2 id="episode">EPISODE 1</h2>
+<h2 id="challenge"></h2>
+<p id="description"></p>
+<button id="begin" onclick="doChallenge()">START CHALLENGE</button>
+
+<div id="voting" class="hidden">
+<h2>VOTE TO SAVE!</h2>
+<p id="voteDescription"></p>
+<div id="voteList"></div>
+<button onclick="castVote()">SUBMIT VOTE</button>
+</div>
+
+<div id="results" class="hidden">
+<h2 id="resultTitle"></h2>
+<div id="resultText"></div>
+<button onclick="nextEpisode()">CONTINUE</button>
+</div>
+</div>
+
+<div class="panel hidden" id="teamsPanel">
+<h2>TEAMS</h2>
+<div id="teams"></div>
+</div>
+
+<div class="panel hidden" id="castPanel">
+<h2>CONTESTANTS</h2>
+<div class="grid" id="cast"></div>
+</div>
+
+<div class="panel hidden" id="history">
+<h2>EPISODE HISTORY</h2>
+<div id="log"></div>
+</div>
+
+<script>
+
+// CHARACTER DATABASE
+
+const roster = [
+["Firey","🔥"],
+["Leafy","🍃"],
+["Bubble","🫧"],
+["Coiny","🪙"],
+["Pin","📌"],
+["Needle","🪡"],
+["Tennis Ball","🎾"],
+["Golf Ball","⛳"],
+["Eraser","🧽"],
+["Pen","🖊️"],
+["Blocky","🧱"],
+["Woody","🪵"],
+["Flower","🌸"],
+["Teardrop","💧"],
+["Ice Cube","🧊"],
+["Snowball","❄️"],
+["Rocky","🪨"],
+["Spongy","🍞"],
+["Pencil","✏️"],
+["Match","🔥"],
+["Book","📘"],
+["Ruby","💎"],
+["Naily","📎"],
+["Bomby","💣"],
+["Puffball","☁️"],
+["Fries","🍟"],
+["Winner","🏆"],
+["Price Tag","🏷️"],
+["Cloudy","☁️"],
+["Balloony","🎈"],
+["Foldy","📄"],
+["Pie","🥧"],
+["Donut","🍩"],
+["Remote","📺"],
+["Tree","🌳"],
+["Black Hole","⚫"],
+["Bottle","🍾"],
+["Clock","🕒"],
+["Fanny","😠"],
+["Lightning","⚡"],
+["Marker","🖍️"],
+["Lollipop","🍭"],
+["Gelatin","🍮"],
+["Teardrop","💧"],
+["Robot Flower","🌺"],
+["Roboty","🤖"],
+["Saw","🪚"],
+["Gaty","🚪"],
+["Basketball","🏀"],
+["8-Ball","🎱"],
+["TV","📺"],
+["Pillow","🛏️"],
+["Cake","🎂"],
+["Eggy","🥚"],
+["Bracelety","💍"],
+["Stapy","📎"],
+["Liy","🔪"],
+["Firey Jr.","🔥"],
+["Remote","📡"]
+];
+
+// TEAM NAME DATABASE
+
+const teamNames = [
+"THE TEAM",
+"Bluebirds",
+"Solidicals",
+"The Bros",
+"DADADADADADA",
+"Meatballs",
+"OW THATS A WALL",
+"Death Pact: The Sequel",
+"Scream and Run",
+"Dottalice"
+];
+
+const challenges = [
+["Tower Building","Build the tallest tower possible!"],
+["Obstacle Course","Race through the obstacle course!"],
+["Treasure Hunt","Find the hidden treasure!"],
+["Platform Survival","Stay on the platform!"],
+["Dessert Contest","Make the best dessert!"],
+["Maze Escape","Find your way out of the maze!"],
+["Flag Collection","Collect as many flags as possible!"],
+["Weather Survival","Survive the crazy storm!"],
+["Bridge Building","Build a bridge across the gap!"],
+["Balloon Challenge","Keep your balloons in the air!"],
+["Basketball Challenge","Score the most baskets!"],
+["Art Contest","Create the best artwork!"],
+["Memory Challenge","Remember everything shown!"],
+["Race","Reach the finish line!"]
+];
+
+let selected = null;
+let contestants = [];
+let teams = [];
+let player = null;
+let episodeNumber = 1;
+let losingTeam = null;
+let unsafe = [];
+let history = [];
+let merged = false;
+let finished = false;
+let lastChallenge = "";
+
+const $ = id => document.getElementById(id);
+
+function shuffle(arr) {
+ return [...arr].sort(()=>Math.random()-.5);
+}
+
+// CHARACTER SELECTION
+
+function showCharacters() {
+ $("characters").innerHTML = "";
+
+ roster.forEach(c=>{
+  const b=document.createElement("button");
+  b.className="character";
+  b.innerHTML=
+   `<div class="face">${c[1]}</div>${c[0]}`;
+
+  b.onclick=()=>{
+   selected=c;
+   $("selected").textContent="Selected: "+c[0];
+
+   document.querySelectorAll(".character")
+    .forEach(x=>x.classList.remove("selected"));
+
+   b.classList.add("selected");
+  };
+
+  $("characters").appendChild(b);
+ });
+}
+
+// START SEASON
+
+function startGame() {
+ if(!selected) {
+  alert("Choose your character first!");
+  return;
+ }
+
+ let chosen=selected;
+
+ let available=shuffle(
+  roster.filter(c=>c[0]!==chosen[0])
+ );
+
+ // 20 contestants, including the player
+
+ contestants=[chosen,...available.slice(0,19)]
+ .map((c,i)=>({
+  name:c[0],
+  emoji:c[1],
+  alive:true,
+  skill:Math.random(),
+  player:c[0]===chosen[0],
+  team:-1
+ }));
+
+ // RANDOM TEAM ASSIGNMENT
+
+ contestants=shuffle(contestants);
+
+ contestants.forEach((c,i)=>{
+  c.team=i<10?0:1;
+ });
+
+ // RANDOM UNIQUE TEAM NAMES
+
+ let names=shuffle(teamNames).slice(0,2);
+
+ teams=[
+  {name:names[0],members:[],score:0},
+  {name:names[1],members:[],score:0}
+ ];
+
+ contestants.forEach(c=>{
+  teams[c.team].members.push(c);
+ });
+
+ player=contestants.find(c=>c.player);
+
+ episodeNumber=1;
+ history=[];
+ merged=false;
+ finished=false;
+
+ $("selection").classList.add("hidden");
+ $("game").classList.remove("hidden");
+ $("teamsPanel").classList.remove("hidden");
+ $("castPanel").classList.remove("hidden");
+ $("history").classList.remove("hidden");
+
+ renderTeams();
+ update();
+ newChallenge();
+ save();
+}
+
+// TEAM DISPLAY
+
+function renderTeams() {
+ $("teams").innerHTML="";
+
+ teams.forEach((t,i)=>{
+  let div=document.createElement("div");
+  div.className="team";
+
+  div.innerHTML=
+   `<h2>${t.name}</h2>
+    <h3>${t.members.filter(c=>c.alive).length} remaining</h3>`;
+
+  t.members.forEach(c=>{
+   let person=document.createElement("span");
+   person.className="contestant";
+
+   person.innerHTML=
+    `<div class="face">${c.emoji}</div>
+     ${c.name}
+     ${c.player?"<br>YOU":""}
+     ${c.alive?"":"<br>ELIMINATED"}`;
+
+   person.style.opacity=c.alive?1:.35;
+   div.appendChild(person);
+  });
+
+  $("teams").appendChild(div);
+ });
+}
+
+function update() {
+ $("cast").innerHTML="";
+
+ contestants.forEach(c=>{
+  let d=document.createElement("div");
+  d.className="contestant";
+
+  d.innerHTML=
+   `<div class="face">${c.emoji}</div>
+    ${c.name}
+    <br>${c.alive?"IN GAME":"ELIMINATED"}
+    ${c.player?"<br>YOU":""}`;
+
+  d.style.opacity=c.alive?1:.4;
+  $("cast").appendChild(d);
+ });
+
+ $("episode").textContent=
+  "EPISODE "+episodeNumber+
+  " | "+alive().length+" REMAINING"+
+  (merged?" | MERGED":"");
+
+ $("log").innerHTML=history.map(h=>
+  "<p>"+h+"</p>"
+ ).join("");
+
+ renderTeams();
+}
+
+function alive() {
+ return contestants.filter(c=>c.alive);
+}
+
+function newChallenge() {
+ let c=challenges[
+  Math.floor(Math.random()*challenges.length)
+ ];
+
+ lastChallenge=c[0];
+
+ $("challenge").textContent=c[0];
+ $("description").textContent=c[1];
+
+ $("begin").classList.remove("hidden");
+ $("voting").classList.add("hidden");
+ $("results").classList.add("hidden");
+}
+
+// CHALLENGE
+
+function doChallenge() {
+
+ // MERGE AT 10
+
+ if(!merged && alive().length<=10) {
+  merged=true;
+  $("description").innerHTML=
+   "<h2>🎉 THE MERGE!</h2>"+
+   "The teams are officially over! "+
+   "From now on, everyone competes individually.";
+  save();
+ }
+
+ if(merged) {
+  individualChallenge();
+  return;
+ }
+
+ teamChallenge();
+}
+
+function teamChallenge() {
+
+ let scores=[0,0];
+
+ teams.forEach((t,i)=>{
+  let members=t.members.filter(c=>c.alive);
+
+  scores[i]=members.reduce((sum,c)=>
+   sum+c.skill+Math.random(),0);
+ });
+
+ // Losing team has the lower score
+
+ let loser=scores[0]<scores[1]?0:1;
+
+ losingTeam=teams[loser];
+
+ unsafe=losingTeam.members.filter(c=>c.alive);
+
+ let winner=teams[1-loser];
+
+ $("description").innerHTML=
+  `<h2 class="safe">${winner.name} WIN THE CHALLENGE!</h2>
+   <h2 class="danger">${losingTeam.name} LOSE!</h2>
+   ${losingTeam.name} must face elimination!`;
+
+ startVoting(unsafe);
+}
+
+// INDIVIDUAL CHALLENGE AFTER MERGE
+
+function individualChallenge() {
+
+ let scores=alive().map(c=>({
+  c,
+  score:Math.random()+c.skill
+ }));
+
+ scores.sort((a,b)=>b.score-a.score);
+
+ let safeCount=Math.ceil(scores.length/2);
+
+ let safe=scores.slice(0,safeCount).map(x=>x.c);
+
+ unsafe=scores.slice(safeCount).map(x=>x.c);
+
+ if(!unsafe.length) unsafe=[scores[scores.length-1].c];
+
+ $("description").innerHTML=
+  `<h2 class="safe">IMMUNE:</h2>
+   ${safe.map(c=>c.name).join(", ")}
+   <h2 class="danger">UP FOR ELIMINATION:</h2>
+   ${unsafe.map(c=>c.name).join(", ")}`;
+
+ losingTeam=null;
+
+ startVoting(unsafe);
+}
+
+// VOTING
+
+function startVoting(options) {
+ $("begin").classList.add("hidden");
+ $("voting").classList.remove("hidden");
+
+ $("voteDescription").textContent=
+  "Choose ONE contestant to save. The contestant with the fewest votes is eliminated.";
+
+ $("voteList").innerHTML="";
+
+ options.forEach(c=>{
+  let label=document.createElement("label");
+  label.className="vote";
+
+  label.innerHTML=
+   `<input type="radio" name="vote"
+   value="${c.name}">
+   ${c.emoji} ${c.name}`;
+
+  $("voteList").appendChild(label);
+ });
+}
+
+function castVote() {
+
+ let chosen=document.querySelector(
+  'input[name="vote"]:checked'
+ );
+
+ if(!chosen) {
+  alert("Choose someone to save!");
+  return;
+ }
+
+ let votes={};
+
+ unsafe.forEach(c=>votes[c.name]=0);
+
+ // PLAYER VOTE
+
+ votes[chosen.value]++;
+
+ // AI VIEWER VOTES
+
+ for(let i=0;i<20;i++) {
+  let target=unsafe[
+   Math.floor(Math.random()*unsafe.length)
+  ];
+
+  votes[target.name]++;
+ }
+
+ let lowest=Math.min(...Object.values(votes));
+
+ let tied=unsafe.filter(c=>
+  votes[c.name]===lowest
+ );
+
+ let eliminated=tied[
+  Math.floor(Math.random()*tied.length)
+ ];
+
+ eliminated.alive=false;
+
+ let message="<h3>VOTE RESULTS</h3>";
+
+ for(let name in votes) {
+  message+=name+": "+votes[name]+" votes<br>";
+ }
+
+ message+=
+  `<h2 class="danger">
+   ${eliminated.emoji} ${eliminated.name}
+   IS ELIMINATED!
+   </h2>`;
+
+ if(eliminated.player) {
+  message+="<h2>YOU HAVE BEEN ELIMINATED!</h2>";
+ }
+
+ history.push(
+  "Episode "+episodeNumber+
+  ": "+eliminated.name+" was eliminated."
+ );
+
+ $("resultTitle").textContent="ELIMINATION RESULTS";
+ $("resultText").innerHTML=message;
+
+ $("voting").classList.add("hidden");
+ $("results").classList.remove("hidden");
+
+ if(!player.alive || alive().length<=1) {
+  finished=true;
+ }
+
+ save();
+ update();
+}
+
+// NEXT EPISODE
+
+function nextEpisode() {
+
+ if(finished) {
+  let winner=alive()[0];
+
+  $("resultTitle").textContent=
+   player.alive?"🏆 YOU ARE THE WINNER!":"SEASON OVER";
+
+  $("resultText").innerHTML=
+   winner?
+   winner.emoji+" "+winner.name+
+   " WINS THE COMPETITION!":
+   "There is no winner!";
+
+  $("results").querySelector("button")
+   .textContent="PLAY AGAIN";
+
+  $("results").querySelector("button").onclick=()=>{
+   localStorage.removeItem("bfdiUltimateSave");
+   location.reload();
+  };
+
+  return;
+ }
+
+ episodeNumber++;
+
+ update();
+ newChallenge();
+ save();
+}
+
+// AUTO SAVE
+
+function save() {
+ localStorage.setItem("bfdiUltimateSave",
+  JSON.stringify({
+   contestants,
+   teams,
+   episodeNumber,
+   merged,
+   history,
+   finished,
+   selected,
+   player,
+   losingTeam,
+   unsafe,
+   lastChallenge
+  })
+ );
+}
+
+// INITIALIZE
+
+showCharacters();
+
+</script>
+</body>
+</html>
